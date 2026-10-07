@@ -6,9 +6,18 @@
 
   <title>AR Ninja</title>
 
+  <!-- บอก Browser ว่า "three" อยู่ที่ไหน -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
+    }
+  }
+  </script>
+
   <style>
-    html,
-    body {
+    html, body {
       margin: 0;
       padding: 0;
       width: 100%;
@@ -21,8 +30,7 @@
       width: 100%;
       height: 100%;
       position: fixed;
-      top: 0;
-      left: 0;
+      inset: 0;
     }
 
     #status {
@@ -31,367 +39,228 @@
       top: 20px;
       left: 50%;
       transform: translateX(-50%);
-
       padding: 10px 18px;
-
       color: white;
-      background: rgba(0, 0, 0, 0.7);
-
+      background: rgba(0,0,0,.7);
       border-radius: 10px;
-
       font-family: Arial, sans-serif;
       font-size: 16px;
-
       text-align: center;
-      white-space: nowrap;
     }
   </style>
 </head>
 
 <body>
 
-  <div id="ar-container"></div>
+<div id="ar-container"></div>
+<div id="status">กำลังเตรียม AR...</div>
 
-  <div id="status">
-    กำลังเตรียม AR...
-  </div>
+<script type="module">
 
+import * as THREE from "three";
 
-  <script type="module">
+import { GLTFLoader } from
+  "three/addons/loaders/GLTFLoader.js";
 
-    /* =========================================
-       IMPORT
-    ========================================= */
+import { MindARThree } from
+  "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js";
 
-    import * as THREE from
-      "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js";
 
-    import { GLTFLoader } from
-      "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/loaders/GLTFLoader.js";
+const status = document.getElementById("status");
 
-    import { MindARThree } from
-      "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js";
 
+const mindarThree = new MindARThree({
+  container: document.querySelector("#ar-container"),
+  imageTargetSrc: "./targets.mind"
+});
 
-    /* =========================================
-       STATUS
-    ========================================= */
 
-    const status = document.getElementById("status");
+const {
+  renderer,
+  scene,
+  camera
+} = mindarThree;
 
 
-    /* =========================================
-       MINDAR
-    ========================================= */
+// แสง
+const light = new THREE.HemisphereLight(
+  0xffffff,
+  0x444444,
+  3
+);
 
-    const mindarThree = new MindARThree({
+scene.add(light);
 
-      container: document.querySelector("#ar-container"),
 
-      /*
-        Target ของงานมึง
-      */
-      imageTargetSrc: "./targets.mind"
+// Target
+const anchor = mindarThree.addAnchor(0);
 
-    });
 
+// ตัวละคร
+let ninja = null;
+let mixer = null;
 
-    const {
-      renderer,
-      scene,
-      camera
-    } = mindarThree;
+const clock = new THREE.Clock();
 
 
-    /* =========================================
-       LIGHT
-    ========================================= */
+// โหลด GLB
+const loader = new GLTFLoader();
 
-    const ambientLight = new THREE.HemisphereLight(
-      0xffffff,
-      0x444444,
-      3
-    );
+loader.load(
+  "./ninja.glb",
 
-    scene.add(ambientLight);
+  function (gltf) {
 
+    console.log("NINJA GLB LOADED:", gltf);
 
-    /* =========================================
-       TARGET ANCHOR
-    ========================================= */
+    ninja = gltf.scene;
 
-    const anchor = mindarThree.addAnchor(0);
+    ninja.scale.set(0.5, 0.5, 0.5);
 
+    ninja.position.set(0, 0, 0);
 
-    /* =========================================
-       VARIABLES
-    ========================================= */
+    ninja.rotation.set(0, 0, 0);
 
-    let ninja = null;
+    anchor.group.add(ninja);
 
-    let mixer = null;
 
-    const clock = new THREE.Clock();
-
-
-    /* =========================================
-       LOAD NINJA MODEL
-    ========================================= */
-
-    const loader = new GLTFLoader();
-
-
-    loader.load(
-
-      /*
-        สำคัญ:
-        ต้องเป็นไฟล์นินจาของมึง
-      */
-      "./ninja.glb",
-
-
-      /* =======================================
-         LOAD SUCCESS
-      ======================================= */
-
-      function(gltf) {
-
-        console.log("NINJA GLB LOADED:", gltf);
-
-        ninja = gltf.scene;
-
-
-        /*
-          ขนาดโมเดล
-        */
-        ninja.scale.set(
-          0.5,
-          0.5,
-          0.5
-        );
-
-
-        /*
-          ตำแหน่งโมเดลบน Target
-        */
-        ninja.position.set(
-          0,
-          0,
-          0
-        );
-
-
-        /*
-          หมุนโมเดล
-        */
-        ninja.rotation.set(
-          0,
-          0,
-          0
-        );
-
-
-        /*
-          เพิ่มนินจาเข้า Anchor
-        */
-        anchor.group.add(ninja);
-
-
-        /* =====================================
-           ANIMATION
-        ===================================== */
-
-        if (gltf.animations && gltf.animations.length > 0) {
-
-          console.log(
-            "Animations:",
-            gltf.animations
-          );
-
-
-          /*
-            ไฟล์นินจาของมึงมี Animation
-            ใช้ Animation แรก
-          */
-          mixer = new THREE.AnimationMixer(ninja);
-
-
-          const animation =
-            gltf.animations[0];
-
-
-          console.log(
-            "Playing animation:",
-            animation.name
-          );
-
-
-          const action =
-            mixer.clipAction(animation);
-
-
-          action.play();
-
-        }
-
-
-        status.innerText =
-          "โหลดนินจาแล้ว — ส่องไปที่รูป Target";
-
-
-      },
-
-
-      /* =======================================
-         LOAD PROGRESS
-      ======================================= */
-
-      function(xhr) {
-
-        if (xhr.total) {
-
-          const percent =
-            (xhr.loaded / xhr.total) * 100;
-
-          console.log(
-            "Loading ninja:",
-            percent.toFixed(0) + "%"
-          );
-
-        }
-
-      },
-
-
-      /* =======================================
-         LOAD ERROR
-      ======================================= */
-
-      function(error) {
-
-        console.error(
-          "ERROR LOADING ninja.glb:",
-          error
-        );
-
-        status.innerText =
-          "โหลด ninja.glb ไม่สำเร็จ";
-
-      }
-
-    );
-
-
-    /* =========================================
-       TARGET FOUND
-    ========================================= */
-
-    anchor.onTargetFound = function() {
+    // เล่น Animation
+    if (
+      gltf.animations &&
+      gltf.animations.length > 0
+    ) {
 
       console.log(
-        "TARGET FOUND"
+        "Animations:",
+        gltf.animations
       );
 
-      status.innerText =
-        "เจอ Target แล้ว!";
+      mixer = new THREE.AnimationMixer(ninja);
 
-    };
-
-
-    /* =========================================
-       TARGET LOST
-    ========================================= */
-
-    anchor.onTargetLost = function() {
+      const animation = gltf.animations[0];
 
       console.log(
-        "TARGET LOST"
+        "Playing animation:",
+        animation.name
       );
 
-      status.innerText =
-        "ส่องกล้องไปที่รูป Target";
+      const action =
+        mixer.clipAction(animation);
 
-    };
-
-
-    /* =========================================
-       ANIMATION LOOP
-    ========================================= */
-
-    renderer.setAnimationLoop(function() {
-
-      const delta =
-        clock.getDelta();
-
-
-      /*
-        อัปเดต Animation ของนินจา
-      */
-      if (mixer) {
-
-        mixer.update(delta);
-
-      }
-
-
-      /*
-        แสดง AR
-      */
-      renderer.render(
-        scene,
-        camera
-      );
-
-    });
-
-
-    /* =========================================
-       START AR
-    ========================================= */
-
-    async function startAR() {
-
-      try {
-
-        status.innerText =
-          "กำลังเปิดกล้อง...";
-
-
-        await mindarThree.start();
-
-
-        status.innerText =
-          "ส่องกล้องไปที่รูป Target";
-
-
-        console.log(
-          "AR STARTED"
-        );
-
-      }
-
-      catch (error) {
-
-        console.error(
-          "AR START ERROR:",
-          error
-        );
-
-        status.innerText =
-          "เปิดกล้องไม่ได้ กรุณาอนุญาต Camera";
-
-      }
-
+      action.play();
     }
 
 
-    /* =========================================
-       START
-    ========================================= */
+    status.innerText =
+      "โหลดนินจาแล้ว — ส่องไปที่รูป Target";
 
-    startAR();
+  },
 
-  </script>
+  function (xhr) {
+
+    if (xhr.total) {
+
+      const percent =
+        (xhr.loaded / xhr.total) * 100;
+
+      console.log(
+        "Loading ninja:",
+        percent.toFixed(0) + "%"
+      );
+
+    }
+
+  },
+
+  function (error) {
+
+    console.error(
+      "ERROR LOADING ninja.glb:",
+      error
+    );
+
+    status.innerText =
+      "โหลด ninja.glb ไม่สำเร็จ";
+
+  }
+);
+
+
+// เจอ Target
+anchor.onTargetFound = function () {
+
+  console.log("TARGET FOUND");
+
+  status.innerText =
+    "เจอ Target แล้ว!";
+
+};
+
+
+// หา Target ไม่เจอ
+anchor.onTargetLost = function () {
+
+  console.log("TARGET LOST");
+
+  status.innerText =
+    "ส่องกล้องไปที่รูป Target";
+
+};
+
+
+// Animation + Render
+renderer.setAnimationLoop(function () {
+
+  const delta =
+    clock.getDelta();
+
+  if (mixer) {
+    mixer.update(delta);
+  }
+
+  renderer.render(
+    scene,
+    camera
+  );
+
+});
+
+
+// เริ่ม AR
+async function startAR() {
+
+  try {
+
+    status.innerText =
+      "กำลังเปิดกล้อง...";
+
+    await mindarThree.start();
+
+    status.innerText =
+      "ส่องกล้องไปที่รูป Target";
+
+    console.log("AR STARTED");
+
+  }
+
+  catch (error) {
+
+    console.error(
+      "AR START ERROR:",
+      error
+    );
+
+    status.innerText =
+      "เปิดกล้องไม่ได้ กรุณาอนุญาต Camera";
+
+  }
+
+}
+
+
+startAR();
+
+</script>
 
 </body>
 </html>
