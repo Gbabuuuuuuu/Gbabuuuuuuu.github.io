@@ -1,121 +1,425 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>หัวตู้เกมสีม่วง</title>
 
-<html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-        "mindar-face-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-three.prod.js"
-      }
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "mindar-face-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-three.prod.js"
     }
-    </script>
-    <script type="module">
-      import * as THREE from 'three';
-      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-      import { MindARThree } from 'mindar-face-three';
-      class Avatar {
-        constructor() {
-          this.gltf = null;
-          this.morphTargetMeshes = [];
-        }
-        async init() {
-          const url = "https://assets.codepen.io/9177687/raccoon_head.glb";
-          const gltf = await new Promise((resolve) => {
-            const loader = new GLTFLoader();
-            loader.load(url, (gltf) => {
-              resolve(gltf);
-            });
-          });
-          gltf.scene.traverse((object) => {
-            if ((object).isBone && !this.root) {
-              this.root = object; // as THREE.Bone;
-            }
-            if (!(object).isMesh) return
-            const mesh = object;
-            if (!mesh.morphTargetDictionary || !mesh.morphTargetInfluences) return
-            this.morphTargetMeshes.push(mesh);
-          });
-          this.gltf = gltf;
-        }
-        updateBlendshapes(blendshapes) {
-          const categories = blendshapes.categories;
-          let coefsMap = new Map();
-          for (let i = 0; i < categories.length; ++i) {
-            coefsMap.set(categories[i].categoryName, categories[i].score);
-          }
-          for (const mesh of this.morphTargetMeshes) {
-            if (!mesh.morphTargetDictionary || !mesh.morphTargetInfluences) {
-              continue;
-            }
-            for (const [name, value] of coefsMap) {
-              if (!Object.keys(mesh.morphTargetDictionary).includes(name)) {
-                continue;
-              }
-              const idx = mesh.morphTargetDictionary[name];
-              mesh.morphTargetInfluences[idx] = value;
-            }
-          }
-        }
-      }
-      let mindarThree = null;
-      let avatar = new Avatar();
-      const setup = async () => {
-        mindarThree = new MindARThree({
-          container: document.querySelector("#container"),
+  }
+  </script>
+
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #171026;
+      color: white;
+      font-family: sans-serif;
+    }
+
+    #view {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    #status {
+      position: fixed;
+      z-index: 10;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      background: #171026dd;
+      padding: 14px;
+      border-radius: 16px;
+      text-align: center;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    #start {
+      position: fixed;
+      z-index: 10;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 0;
+      border-radius: 30px;
+      padding: 16px 28px;
+      background: #44ffff;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    #start:disabled {
+      opacity: .5;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="view"></div>
+  <div id="status">หัวตู้เกมสีม่วง — กดเปิดกล้อง</div>
+  <button id="start">เปิดกล้อง</button>
+
+  <script>
+    const label = document.querySelector('#status');
+    const button = document.querySelector('#start');
+
+    let ar;
+    let busy = false;
+
+    window.addEventListener('error', e => {
+      label.textContent = 'ผิดพลาด: ' + e.message;
+    });
+
+    window.addEventListener('unhandledrejection', e => {
+      label.textContent =
+        'ผิดพลาด: ' + String(e.reason?.message || e.reason);
+    });
+
+    button.onclick = async () => {
+      if (busy) return;
+
+      busy = true;
+      button.disabled = true;
+
+      let stage = 'โหลดระบบ';
+
+      try {
+        label.textContent = 'กำลังโหลดระบบ…';
+
+        const [THREE, { MindARThree }] = await Promise.all([
+          import('three'),
+          import('mindar-face-three')
+        ]);
+
+        ar = new MindARThree({
+          container: document.querySelector('#view')
         });
-        const { renderer, scene, camera } = mindarThree;
-        const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
-        scene.add(light);
-        const anchor = mindarThree.addAnchor(1);
-        await avatar.init();
-        avatar.gltf.scene.scale.set(2, 2, 2);
-        anchor.group.add(avatar.gltf.scene);
-      }
-      const start = async () => {
-        if (!mindarThree) {
-          await setup();
+
+        const { scene, renderer, camera } = ar;
+
+        scene.add(
+          new THREE.HemisphereLight(0xffffff, 0x42345e, 2)
+        );
+
+        const lamp = new THREE.DirectionalLight(0xffffff, 2);
+        lamp.position.set(-2, 3, 5);
+        scene.add(lamp);
+
+        const head = new THREE.Group();
+        ar.addAnchor(1).group.add(head);
+
+        // สีของตัวละคร
+        const PURPLE = 0x7025c9;
+        const CYAN = 0x32ffff;
+        const PINK = 0xff209f;
+        const YELLOW = 0xffcf28;
+
+        const paint = color =>
+          new THREE.MeshStandardMaterial({
+            color,
+            roughness: .35,
+            metalness: .15
+          });
+
+        const glow = color =>
+          new THREE.MeshBasicMaterial({
+            color,
+            side: THREE.DoubleSide
+          });
+
+        // สร้างกล่องขอบมน
+        function rounded(
+          w, h, d, r, color, x, y, z, parent = head
+        ) {
+          const shape = new THREE.Shape();
+          const a = -w / 2;
+          const b = -h / 2;
+
+          shape.moveTo(a + r, b);
+          shape.lineTo(a + w - r, b);
+          shape.quadraticCurveTo(a + w, b, a + w, b + r);
+
+          shape.lineTo(a + w, b + h - r);
+          shape.quadraticCurveTo(
+            a + w, b + h, a + w - r, b + h
+          );
+
+          shape.lineTo(a + r, b + h);
+          shape.quadraticCurveTo(a, b + h, a, b + h - r);
+
+          shape.lineTo(a, b + r);
+          shape.quadraticCurveTo(a, b, a + r, b);
+
+          const geometry = new THREE.ExtrudeGeometry(shape, {
+            depth: d,
+            bevelEnabled: false,
+            curveSegments: 12
+          });
+
+          const mesh = new THREE.Mesh(geometry, paint(color));
+          mesh.position.set(x, y, z);
+          parent.add(mesh);
+
+          return mesh;
         }
-        await mindarThree.start();
-        const { renderer, scene, camera } = mindarThree;
-        const feedVideo = document.querySelector("#video-feed");
-        feedVideo.srcObject = mindarThree.video.srcObject.clone();
-        feedVideo.play();
+
+        // ตัวหัวและจอหน้า
+        rounded(1.9, 1.95, .64, .28, PURPLE, 0, .10, -.49);
+        rounded(1.67, 1.68, .08, .23, 0x211730, 0, .10, .16);
+
+        // ตาซ้ายเป็นวงกลม ตาขวาเป็นขีด
+        const eyeL = new THREE.Group();
+        const eyeR = new THREE.Group();
+
+        eyeL.position.set(-.40, .35, .30);
+        eyeR.position.set(.40, .35, .30);
+        head.add(eyeL, eyeR);
+
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(.21, .065, 12, 40),
+          glow(CYAN)
+        );
+        eyeL.add(ring);
+
+        const pupil = new THREE.Mesh(
+          new THREE.CircleGeometry(.135, 32),
+          glow(0x09262e)
+        );
+        pupil.position.z = .02;
+        eyeL.add(pupil);
+
+        const slit = rounded(
+          .43, .16, .035, .075, CYAN, 0, 0, 0, eyeR
+        );
+        slit.material = glow(CYAN);
+
+        // คิ้วสีเหลือง
+        const browL = rounded(
+          .43, .12, .05, .055, YELLOW, -.40, .77, .30
+        );
+
+        const browR = rounded(
+          .43, .12, .05, .055, YELLOW, .40, .77, .30
+        );
+
+        browL.rotation.z = .15;
+        browR.rotation.z = -.15;
+
+        // ปุ่มข้างหัว
+        rounded(.16, .24, .10, .07, YELLOW, -.99, .49, -.16);
+        rounded(.16, .24, .10, .07, PINK, -.99, .16, -.16);
+
+        // สร้างท่อนเสาอากาศ
+        function rod(from, to, radius, color) {
+          const p = new THREE.Vector3(...from);
+          const q = new THREE.Vector3(...to);
+          const direction = q.clone().sub(p);
+
+          const mesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(
+              radius, radius, direction.length(), 12
+            ),
+            paint(color)
+          );
+
+          mesh.position.copy(
+            p.clone().add(q).multiplyScalar(.5)
+          );
+
+          mesh.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            direction.normalize()
+          );
+
+          head.add(mesh);
+        }
+
+        rod(
+          [0, 1.06, -.12],
+          [.08, 1.35, -.12],
+          .045,
+          PURPLE
+        );
+
+        rod(
+          [.08, 1.35, -.12],
+          [-.20, 1.48, -.12],
+          .045,
+          PURPLE
+        );
+
+        const ball = new THREE.Mesh(
+          new THREE.SphereGeometry(.14, 24, 16),
+          paint(CYAN)
+        );
+        ball.position.set(-.20, 1.48, -.12);
+        head.add(ball);
+
+        // รูปร่างปาก: อ้า / ยิ้ม / ปากคว่ำ
+        const mouthGeo =
+          new THREE.PlaneGeometry(.72, .07, 20, 1);
+
+        const base = mouthGeo.attributes.position;
+        const forms = [[], [], []];
+
+        for (let i = 0; i < base.count; i++) {
+          const x = base.getX(i);
+          const y = base.getY(i);
+          const bend = Math.pow(x / .36, 2) * .18;
+
+          forms[0].push(x, y * 8, 0);
+          forms[1].push(x, y + bend, 0);
+          forms[2].push(x, y - bend, 0);
+        }
+
+        mouthGeo.morphAttributes.position = forms.map(
+          values => new THREE.Float32BufferAttribute(values, 3)
+        );
+
+        const mouth = new THREE.Mesh(mouthGeo, glow(PINK));
+        mouth.position.set(0, -.43, .31);
+        head.add(mouth);
+
+        // ด้านในปากและฟันซี่เดียว
+        const inside = rounded(
+          .57, .39, .02, .10, 0x350d29, 0, -.43, .325
+        );
+
+        const tooth = rounded(
+          .14, .15, .025, .025, 0xffffff, .10, -.31, .355
+        );
+
+        inside.visible = false;
+        tooth.visible = false;
+
+        stage = 'เปิดกล้องและตรวจจับใบหน้า';
+        label.textContent =
+          'อนุญาตกล้อง แล้วรอโหลดระบบตรวจจับใบหน้า…';
+
+        await ar.start();
+        button.hidden = true;
+
+        // อัปเดตสีหน้าทุกเฟรม
         renderer.setAnimationLoop(() => {
-          const estimate = mindarThree.getLatestEstimate();
-          if (estimate && estimate.blendshapes) {
-            avatar.updateBlendshapes(estimate.blendshapes);
+          try {
+            const estimate = ar.getLatestEstimate();
+            const categories =
+              estimate?.blendshapes?.categories;
+
+            head.visible = !!estimate;
+
+            if (categories) {
+              const scores = Object.fromEntries(
+                categories.map(c => [c.categoryName, c.score])
+              );
+
+              const s = name =>
+                Math.max(0, Math.min(1, scores[name] || 0));
+
+              // กะพริบตา
+              eyeL.scale.y =
+                Math.max(.07, 1 - s('eyeBlinkLeft'));
+
+              eyeR.scale.y =
+                Math.max(.07, 1 - s('eyeBlinkRight'));
+
+              // กลอกตา
+              pupil.position.x =
+                (s('eyeLookOutLeft') - s('eyeLookInLeft')) * .07;
+
+              pupil.position.y =
+                (s('eyeLookUpLeft') - s('eyeLookDownLeft')) * .05;
+
+              slit.position.x =
+                (s('eyeLookInRight') - s('eyeLookOutRight')) * .06;
+
+              slit.position.y =
+                (s('eyeLookUpRight') - s('eyeLookDownRight')) * .04;
+
+              // อ้าปาก ยิ้ม และปากคว่ำ
+              const open = s('jawOpen');
+
+              const smile =
+                (s('mouthSmileLeft') + s('mouthSmileRight')) / 2;
+
+              const frown =
+                (s('mouthFrownLeft') + s('mouthFrownRight')) / 2;
+
+              mouth.morphTargetInfluences[0] = open;
+              mouth.morphTargetInfluences[1] = smile;
+              mouth.morphTargetInfluences[2] = frown;
+
+              inside.visible = open > .18;
+              tooth.visible = open > .18;
+
+              inside.scale.y = Math.max(.05, open);
+              tooth.scale.y = Math.min(1, open * 2);
+              tooth.position.y = -.43 + .20 * open - .055;
+
+              // ขมวดคิ้วและยกคิ้ว
+              browL.rotation.z =
+                .15 - s('browDownLeft') * .6;
+
+              browR.rotation.z =
+                -.15 + s('browDownRight') * .6;
+
+              browL.position.y =
+                browR.position.y =
+                  .77 + s('browInnerUp') * .16;
+
+              label.textContent =
+                'ลองกะพริบตา อ้าปาก ยิ้ม ปากคว่ำ และกลอกตา';
+
+            } else {
+              label.textContent = estimate
+                ? 'พบหน้า แต่ยังไม่มีค่าสีหน้า'
+                : 'ให้กล้องเห็นใบหน้าชัด ๆ ในที่สว่าง';
+            }
+
+            renderer.render(scene, camera);
+
+          } catch (error) {
+            renderer.setAnimationLoop(null);
+            label.textContent =
+              'ผิดพลาด: ' + error.message +
+              ' — รีเฟรชเพื่อลองใหม่';
           }
-          renderer.render(scene, camera);
         });
+
+      } catch (error) {
+        console.error(error);
+
+        if (ar) {
+          try {
+            ar.renderer.setAnimationLoop(null);
+            ar.stop();
+            ar.renderer.dispose();
+          } catch {}
+
+          ar = null;
+        }
+
+        document.querySelector('#view').replaceChildren();
+
+        label.textContent =
+          'ติดที่: ' + stage + '\n' +
+          (error.message || String(error));
+
+        busy = false;
+        button.disabled = false;
+        button.textContent = 'ลองอีกครั้ง';
       }
-      start();
-    </script>
-    <style>
-      body {
-        margin: 0;
-      }
-      #container {
-        width: 100vw;
-        height: 100vh;
-        position: relative;
-        overflow: hidden;
-      }
-      #video-feed {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        width: 50vw;
-        z-index: 9999999;
-        transform: scaleX(-1);
-      }
-    </style>
-  </head>
-  <body>
-    <div id="container">
-    </div>
-    <video id="video-feed">
-    </video>
-  </body>
+    };
+  </script>
+</body>
 </html>
