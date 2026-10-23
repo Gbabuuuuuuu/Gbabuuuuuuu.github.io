@@ -1,403 +1,56 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>AR Ninja</title>
-
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
-    }
-  }
-  </script>
-
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #000;
-    }
-
-    #ar-container {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-    }
-
-    #status {
-      position: fixed;
-      z-index: 100;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 10px 18px;
-      color: white;
-      background: rgba(0,0,0,.7);
-      border-radius: 10px;
-      font-family: Arial, sans-serif;
-      font-size: 16px;
-      text-align: center;
-    }
-  </style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YETI Image AR</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"}}</script>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Tahoma,sans-serif}#ar-container{position:fixed;inset:0;overflow:hidden}#status{position:fixed;z-index:10;top:16px;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 64px);padding:12px 18px;border-radius:14px;background:rgba(9,25,45,.85);color:white;text-align:center;font-size:15px;line-height:1.6}#start{position:fixed;z-index:11;bottom:40px;left:50%;transform:translateX(-50%);padding:14px 28px;border:0;border-radius:24px;color:#082437;background:#92e5ff;font:700 17px Tahoma,sans-serif;cursor:pointer}#credit{position:fixed;z-index:10;bottom:8px;left:12px;right:12px;text-align:center;color:white;text-shadow:0 1px 4px black;font-size:10px}#credit a{color:inherit}[hidden]{display:none!important}
+</style>
 </head>
-
 <body>
-
-<div id="ar-container"></div>
-<div id="status">กำลังเตรียม AR...</div>
-
+<div id="ar-container"></div><div id="status" role="status" aria-live="polite">กดเปิดกล้อง แล้วส่องภาพ YETI</div><button id="start">เปิดกล้อง AR</button>
+<div id="credit"><a href="https://sketchfab.com/3d-models/love-joy-turret-2f7c275b6d0e4ee499790efda7e4be5a" target="_blank" rel="noopener">Love Joy Turret — Al</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></div>
 <script type="module">
-
-import * as THREE from "three";
-
-import {
-  GLTFLoader
-} from "three/addons/loaders/GLTFLoader.js";
-
-import {
-  MindARThree
-} from "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js";
-
-
-const status = document.getElementById("status");
-
-
-// ==============================
-// MindAR
-// ==============================
-
-const mindarThree = new MindARThree({
-  container: document.querySelector("#ar-container"),
-  imageTargetSrc: "./targets.mind"
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { MindARThree } from 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js';
+const status=document.getElementById('status'),start=document.getElementById('start');
+const mindar=new MindARThree({container:document.getElementById('ar-container'),imageTargetSrc:'./targets-yeti.mind',maxTrack:1});
+const {renderer,scene,camera}=mindar;
+const pmrem=new THREE.PMREMGenerator(renderer),room=new RoomEnvironment();scene.environment=pmrem.fromScene(room,0.04).texture;room.dispose();pmrem.dispose();
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
+scene.add(new THREE.HemisphereLight(0xffffff,0x8899aa,2));
+const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(2,4,5);scene.add(light);
+const anchor=mindar.addAnchor(0),clock=new THREE.Clock();
+let mixer,modelPromise,modelReady=false,cameraReady=false,found=false,modelFailed=false;
+function updateStatus(){if(modelFailed||!modelReady)return;status.textContent=!cameraReady?'กำลังเปิดกล้อง…':found?'พบภาพ YETI แล้ว':'ส่องกล้องไปที่ภาพ YETI ให้เห็นครบทั้งภาพ';}
+anchor.onTargetFound=()=>{found=true;updateStatus();};anchor.onTargetLost=()=>{found=false;updateStatus();};
+function loadModel(){return new Promise((resolve,reject)=>{
+new GLTFLoader().load('./love_joy_turret.gltf',gltf=>{
+const model=gltf.scene;
+if(gltf.animations.length){mixer=new THREE.AnimationMixer(model);mixer.clipAction(gltf.animations[0]).play();mixer.update(0);}
+model.updateMatrixWorld(true);model.traverse(object=>{if(object.isSkinnedMesh)object.skeleton.update();});
+// Frame the body; the two distant muzzle-effect planes must not shrink the character.
+const box=new THREE.Box3();model.traverse(object=>{if(object.isMesh && !/^Muzzle/.test(object.material.name))box.union(new THREE.Box3().setFromObject(object));});
+const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3()),extent=Math.max(size.x,size.y,size.z);
+if(!Number.isFinite(extent)||extent<=0){reject(new Error('ขนาดโมเดลไม่ถูกต้อง'));return;}
+// Parent groups preserve animated node transforms and place the feet on the image plane.
+const centered=new THREE.Group();centered.position.set(-center.x,-box.min.y,-center.z);centered.add(model);
+const placement=new THREE.Group();placement.scale.setScalar(0.9/extent);placement.rotation.x=Math.PI/2;placement.add(centered);anchor.group.add(placement);
+model.traverse(object=>{if(object.isMesh)object.frustumCulled=false;});
+if(gltf.animations.length){mixer=new THREE.AnimationMixer(model);mixer.clipAction(gltf.animations[0]).play();}
+modelReady=true;updateStatus();resolve();
+},progress=>{if(progress.total)status.textContent=`กำลังโหลดโมเดล ${Math.round(progress.loaded/progress.total*100)}%`;},reject);
+});}
+renderer.setAnimationLoop(()=>{const delta=Math.min(clock.getDelta(),0.1);if(mixer)mixer.update(delta);renderer.render(scene,camera);});
+start.addEventListener('click',async()=>{
+start.hidden=true;status.textContent='กำลังโหลดโมเดล…';
+try{
+if(!modelPromise){modelFailed=false;modelPromise=loadModel().catch(error=>{modelFailed=true;modelPromise=null;throw error;});}
+await modelPromise;status.textContent='กำลังเปิดกล้อง… กรุณาอนุญาตให้ใช้กล้อง';
+await mindar.start();cameraReady=true;updateStatus();
+}catch(error){console.error(error);status.textContent=modelFailed?'โหลดโมเดลไม่สำเร็จ กรุณาตรวจการเชื่อมต่อแล้วลองอีกครั้ง':'เปิด AR ไม่สำเร็จ กรุณาอนุญาตกล้องและเปิดผ่าน HTTPS';start.textContent='ลองอีกครั้ง';start.hidden=false;}
 });
-
-const {
-  renderer,
-  scene,
-  camera
-} = mindarThree;
-
-
-// ==============================
-// แสง
-// ==============================
-
-scene.add(
-  new THREE.HemisphereLight(
-    0xffffff,
-    0x444444,
-    4
-  )
-);
-
-const light = new THREE.DirectionalLight(
-  0xffffff,
-  3
-);
-
-light.position.set(2, 4, 5);
-
-scene.add(light);
-
-
-// ==============================
-// Target
-// ==============================
-
-const anchor = mindarThree.addAnchor(0);
-
-
-// ==============================
-// ตัวแปร
-// ==============================
-
-let ninja = null;
-let mixer = null;
-
-const clock = new THREE.Clock();
-
-
-// ==============================
-// โหลด Ninja
-// ==============================
-
-const loader = new GLTFLoader();
-
-loader.load(
-
-  "./ninja.glb",
-
-  function(gltf) {
-
-    console.log("===== NINJA LOADED =====");
-    console.log(gltf);
-
-    ninja = gltf.scene;
-
-
-    // --------------------------------
-    // ทำให้ทุก Mesh แสดงผล
-    // --------------------------------
-
-    ninja.traverse(function(object) {
-
-      if (object.isMesh) {
-
-        object.visible = true;
-
-        object.frustumCulled = false;
-
-        if (object.material) {
-
-          if (Array.isArray(object.material)) {
-
-            object.material.forEach(function(mat) {
-              mat.side = THREE.DoubleSide;
-            });
-
-          } else {
-
-            object.material.side =
-              THREE.DoubleSide;
-
-          }
-
-        }
-
-      }
-
-    });
-
-
-    // --------------------------------
-    // หา Bounding Box
-    // --------------------------------
-
-    const box =
-      new THREE.Box3().setFromObject(ninja);
-
-    const size =
-      box.getSize(new THREE.Vector3());
-
-    const center =
-      box.getCenter(new THREE.Vector3());
-
-
-    console.log("NINJA SIZE:", size);
-    console.log("NINJA CENTER:", center);
-
-
-    // --------------------------------
-    // ปรับขนาด
-    // --------------------------------
-
-    const maxSize = Math.max(
-      size.x,
-      size.y,
-      size.z
-    );
-
-    const targetSize = 0.8;
-
-    const scale =
-      targetSize / maxSize;
-
-    ninja.scale.setScalar(scale);
-
-
-    // --------------------------------
-    // สำคัญ:
-    // คำนวณตำแหน่งใหม่หลัง Scale
-    // --------------------------------
-
-    ninja.position.set(
-      -center.x * scale,
-      -center.y * scale,
-      -center.z * scale
-    );
-
-
-    console.log(
-      "NINJA SCALE:",
-      scale
-    );
-
-    console.log(
-      "NINJA POSITION:",
-      ninja.position
-    );
-
-
-    // --------------------------------
-    // เพิ่มเข้า Target
-    // --------------------------------
-
-    anchor.group.add(ninja);
-
-
-    // --------------------------------
-    // Animation
-    // --------------------------------
-
-    if (
-      gltf.animations &&
-      gltf.animations.length > 0
-    ) {
-
-      console.log(
-        "Animation:",
-        gltf.animations[0].name
-      );
-
-      mixer =
-        new THREE.AnimationMixer(ninja);
-
-      const action =
-        mixer.clipAction(
-          gltf.animations[0]
-        );
-
-      action.reset();
-
-      action.play();
-
-    }
-
-
-    status.innerText =
-      "โหลดนินจาแล้ว — ส่องไปที่รูป Target";
-
-  },
-
-
-  // Loading
-  function(xhr) {
-
-    if (xhr.total) {
-
-      const percent =
-        (xhr.loaded / xhr.total) * 100;
-
-      console.log(
-        "Ninja loading:",
-        percent.toFixed(0) + "%"
-      );
-
-    }
-
-  },
-
-
-  // Error
-  function(error) {
-
-    console.error(
-      "NINJA ERROR:",
-      error
-    );
-
-    status.innerText =
-      "โหลด ninja.glb ไม่สำเร็จ";
-
-  }
-
-);
-
-
-// ==============================
-// Target เจอ
-// ==============================
-
-anchor.onTargetFound = function() {
-
-  console.log("TARGET FOUND");
-
-  status.innerText =
-    "เจอ Target แล้ว!";
-
-};
-
-
-// ==============================
-// Target หาย
-// ==============================
-
-anchor.onTargetLost = function() {
-
-  console.log("TARGET LOST");
-
-  status.innerText =
-    "ส่องกล้องไปที่รูป Target";
-
-};
-
-
-// ==============================
-// Render + Animation
-// ==============================
-
-renderer.setAnimationLoop(function() {
-
-  const delta =
-    clock.getDelta();
-
-  if (mixer) {
-    mixer.update(delta);
-  }
-
-  renderer.render(
-    scene,
-    camera
-  );
-
-});
-
-
-// ==============================
-// Start AR
-// ==============================
-
-async function startAR() {
-
-  try {
-
-    status.innerText =
-      "กำลังเปิดกล้อง...";
-
-    await mindarThree.start();
-
-    status.innerText =
-      "ส่องกล้องไปที่รูป Target";
-
-    console.log("AR STARTED");
-
-  }
-
-  catch(error) {
-
-    console.error(
-      "AR START ERROR:",
-      error
-    );
-
-    status.innerText =
-      "เปิดกล้องไม่ได้";
-
-  }
-
-}
-
-startAR();
-
-</script>
-
-</body>
-</html>
+</script></body></html>
