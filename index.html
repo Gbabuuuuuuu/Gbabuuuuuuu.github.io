@@ -36,9 +36,9 @@ model.updateMatrixWorld(true);model.traverse(object=>{if(object.isSkinnedMesh)ob
 const box=new THREE.Box3();model.traverse(object=>{if(object.isMesh && !/^Muzzle/.test(object.material.name))box.union(new THREE.Box3().setFromObject(object));});
 const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3()),extent=Math.max(size.x,size.y,size.z);
 if(!Number.isFinite(extent)||extent<=0){reject(new Error('ขนาดโมเดลไม่ถูกต้อง'));return;}
-// Parent groups preserve animated node transforms and place the feet on the image plane.
-const centered=new THREE.Group();centered.position.set(-center.x,-box.min.y,-center.z);centered.add(model);
-const placement=new THREE.Group();placement.scale.setScalar(0.9/extent);placement.rotation.x=Math.PI/2;placement.add(centered);anchor.group.add(placement);
+// Preserve animation transforms; face the viewer and center the model on the image.
+const centered=new THREE.Group();centered.position.set(-center.x,-center.y,-center.z);centered.add(model);
+const placement=new THREE.Group();placement.scale.setScalar(0.9/extent);placement.rotation.x=0;placement.add(centered);anchor.group.add(placement);
 model.traverse(object=>{if(object.isMesh)object.frustumCulled=false;});
 if(gltf.animations.length){mixer=new THREE.AnimationMixer(model);mixer.clipAction(gltf.animations[0]).play();}
 modelReady=true;updateStatus();resolve();
